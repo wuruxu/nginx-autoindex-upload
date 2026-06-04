@@ -449,9 +449,103 @@ ngx_http_autoindex_html(ngx_http_request_t *r, ngx_array_t *entries)
     ;
 
     static u_char  header[] =
-        "</title></head>" CRLF
+        "</title>" CRLF
+        "<style>" CRLF
+        ".ngx-autoindex-head{display:flex;align-items:center;"
+        "justify-content:space-between;gap:16px}" CRLF
+        ".ngx-autoindex-upload{display:flex;align-items:center;gap:12px;"
+        "font:14px Arial,sans-serif}" CRLF
+        ".ngx-autoindex-upload button{border:0;border-radius:4px;"
+        "background:#1976d2;color:#fff;font:500 14px Arial,sans-serif;"
+        "letter-spacing:.2px;min-width:88px;padding:8px 16px;"
+        "box-shadow:0 2px 4px rgba(0,0,0,.25);cursor:pointer;"
+        "transition:background .15s,box-shadow .15s}" CRLF
+        ".ngx-autoindex-upload button:hover{background:#1565c0;"
+        "box-shadow:0 3px 6px rgba(0,0,0,.3)}" CRLF
+        ".ngx-autoindex-upload button:active{background:#0d47a1;"
+        "box-shadow:0 1px 2px rgba(0,0,0,.3)}" CRLF
+        ".ngx-autoindex-upload button:disabled{background:#9e9e9e;"
+        "box-shadow:none;cursor:default}" CRLF
+        ".ngx-autoindex-progress{--value:0;position:relative;width:40px;"
+        "height:40px;border-radius:50%;background:conic-gradient(#1976d2 "
+        "calc(var(--value)*1%),#e0e0e0 0);box-shadow:inset 0 0 0 1px "
+        "rgba(0,0,0,.06)}" CRLF
+        ".ngx-autoindex-progress[hidden]{display:none}" CRLF
+        ".ngx-autoindex-progress:before{content:\"\";position:absolute;"
+        "inset:5px;border-radius:50%;background:#fff}" CRLF
+        ".ngx-autoindex-progress span{position:absolute;inset:0;display:flex;"
+        "align-items:center;justify-content:center;font-size:11px;"
+        "color:#424242}" CRLF
+        "</style>" CRLF
+        "</head>" CRLF
         "<body>" CRLF
-        "<h1>Index of "
+        "<div class=\"ngx-autoindex-head\"><h1>Index of "
+    ;
+
+    static u_char  upload[] =
+        "</h1>" CRLF
+        "<div class=\"ngx-autoindex-upload\">" CRLF
+        "<input id=\"ngx-autoindex-file\" type=\"file\" style=\"display:none\">"
+        CRLF
+        "<div id=\"ngx-autoindex-progress-wrap\" "
+        "class=\"ngx-autoindex-progress\" hidden>" CRLF
+        "<span id=\"ngx-autoindex-percent\">0</span>" CRLF
+        "</div>" CRLF
+        "<button id=\"ngx-autoindex-upload\" type=\"button\">Upload</button>"
+        CRLF
+        "</div></div>" CRLF
+        "<script>" CRLF
+        "(function(){" CRLF
+        "var input=document.getElementById('ngx-autoindex-file');" CRLF
+        "var button=document.getElementById('ngx-autoindex-upload');" CRLF
+        "var wrap=document.getElementById('ngx-autoindex-progress-wrap');" CRLF
+        "var percent=document.getElementById('ngx-autoindex-percent');" CRLF
+        "var hideTimer=null;" CRLF
+        "function setProgress(value){" CRLF
+        "if(hideTimer){clearTimeout(hideTimer);hideTimer=null;}" CRLF
+        "wrap.hidden=false;" CRLF
+        "wrap.style.setProperty('--value',value);" CRLF
+        "percent.textContent=value;" CRLF
+        "}" CRLF
+        "function hideProgressSoon(){" CRLF
+        "hideTimer=setTimeout(function(){wrap.hidden=true;},3000);" CRLF
+        "}" CRLF
+        "function refreshList(){" CRLF
+        "fetch(location.href,{cache:'no-store'}).then(function(response){" CRLF
+        "if(!response.ok){throw new Error('refresh failed');}" CRLF
+        "return response.text();" CRLF
+        "}).then(function(html){" CRLF
+        "var doc=new DOMParser().parseFromString(html,'text/html');" CRLF
+        "var next=doc.getElementById('ngx-autoindex-list');" CRLF
+        "var current=document.getElementById('ngx-autoindex-list');" CRLF
+        "if(next&&current){current.replaceWith(next);}" CRLF
+        "});" CRLF
+        "}" CRLF
+        "button.addEventListener('click',function(){input.click();});" CRLF
+        "input.addEventListener('change',function(){" CRLF
+        "var file=input.files&&input.files[0];" CRLF
+        "if(!file){return;}" CRLF
+        "var base=new URL(location.href);" CRLF
+        "base.search='';base.hash='';" CRLF
+        "var target=new URL(encodeURIComponent(file.name),base);" CRLF
+        "var xhr=new XMLHttpRequest();" CRLF
+        "xhr.open('PUT',target.href,true);" CRLF
+        "xhr.upload.onprogress=function(e){" CRLF
+        "if(e.lengthComputable){setProgress(Math.round(e.loaded*100/e.total));}"
+        CRLF
+        "};" CRLF
+        "xhr.onload=function(){" CRLF
+        "button.disabled=false;input.value='';" CRLF
+        "if(xhr.status>=200&&xhr.status<300){setProgress(100);refreshList();"
+        "hideProgressSoon();return;}" CRLF
+        "alert('Upload failed: HTTP '+xhr.status);" CRLF
+        "};" CRLF
+        "xhr.onerror=function(){button.disabled=false;input.value='';"
+        "alert('Upload failed');};" CRLF
+        "button.disabled=true;setProgress(0);xhr.send(file);" CRLF
+        "});" CRLF
+        "})();" CRLF
+        "</script>"
     ;
 
     static u_char  tail[] =
@@ -478,8 +572,9 @@ ngx_http_autoindex_html(ngx_http_request_t *r, ngx_array_t *entries)
           + r->uri.len + escape_html
           + sizeof(header) - 1
           + r->uri.len + escape_html
-          + sizeof("</h1>") - 1
-          + sizeof("<hr><pre><a href=\"../\">../</a>" CRLF) - 1
+          + sizeof(upload) - 1
+          + sizeof("<hr><pre id=\"ngx-autoindex-list\"><a href=\"../\">../</a>"
+                   CRLF) - 1
           + sizeof("</pre><hr>") - 1
           + sizeof(tail) - 1;
 
@@ -536,10 +631,13 @@ ngx_http_autoindex_html(ngx_http_request_t *r, ngx_array_t *entries)
         b->last = ngx_cpymem(b->last, r->uri.data, r->uri.len);
     }
 
-    b->last = ngx_cpymem(b->last, "</h1>", sizeof("</h1>") - 1);
+    b->last = ngx_cpymem(b->last, upload, sizeof(upload) - 1);
 
-    b->last = ngx_cpymem(b->last, "<hr><pre><a href=\"../\">../</a>" CRLF,
-                         sizeof("<hr><pre><a href=\"../\">../</a>" CRLF) - 1);
+    b->last = ngx_cpymem(b->last,
+                         "<hr><pre id=\"ngx-autoindex-list\">"
+                         "<a href=\"../\">../</a>" CRLF,
+                         sizeof("<hr><pre id=\"ngx-autoindex-list\">"
+                                "<a href=\"../\">../</a>" CRLF) - 1);
 
     alcf = ngx_http_get_module_loc_conf(r, ngx_http_autoindex_module);
     tp = ngx_timeofday();
